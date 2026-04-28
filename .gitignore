@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local environments
+.conda/
+.venv/
+venv/
+env/
+
+# Editor and OS files
+.vscode/
+.idea/
+.DS_Store
+
+# Logs and generated run artifacts
+*.log
+failed_cases.txt
+apbs.in
+apbs_grid*.dx
+*.pqr
+
+# Large generated data/model artifacts
+*.h5
+*.hdf5
+*.npy
+*.npz
+*.pkl
+*.pt
+*.pth
+
+# Temporary files
+tmp/
+temp/
+*.tmp

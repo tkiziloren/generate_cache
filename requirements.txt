@@ -1,0 +1,9 @@
+numpy
+scipy
+h5py
+tqdm
+biopython
+prody
+rdkit-pypi
+git+https://gitlab.com/cheminfIBB/tfbio.git
+pybel
