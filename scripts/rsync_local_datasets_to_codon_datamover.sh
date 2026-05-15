@@ -45,7 +45,12 @@ echo "Preparing remote NFS directories via datamover..."
 remote_prepare_command="srun --partition=datamover --mem=4G --time=00:30:00 bash -lc $(printf '%q' "$remote_prepare")"
 ssh "$REMOTE_HOST" "bash -l -c $(printf '%q' "$remote_prepare_command")"
 
-remote_rsync="bash -l -c \"srun --partition=datamover --mem=$DATAMOVER_MEM --time=$DATAMOVER_TIME rsync\""
+remote_srun="$(ssh "$REMOTE_HOST" "bash -l -c 'command -v srun'")"
+if [[ -z "$remote_srun" ]]; then
+  echo "Could not find srun on remote host: $REMOTE_HOST" >&2
+  exit 1
+fi
+remote_rsync="$remote_srun --partition=datamover --mem=$DATAMOVER_MEM --time=$DATAMOVER_TIME rsync"
 
 rsync_args=(
   -avh
