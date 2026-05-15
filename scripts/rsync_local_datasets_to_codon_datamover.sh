@@ -42,7 +42,8 @@ EOF
 )
 
 echo "Preparing remote NFS directories via datamover..."
-ssh "$REMOTE_HOST" "srun --partition=datamover --mem=4G --time=00:30:00 bash -lc $(printf '%q' "$remote_prepare")"
+remote_prepare_command="srun --partition=datamover --mem=4G --time=00:30:00 bash -lc $(printf '%q' "$remote_prepare")"
+ssh "$REMOTE_HOST" "bash -l -c $(printf '%q' "$remote_prepare_command")"
 
 remote_rsync="bash -l -c \"srun --partition=datamover --mem=$DATAMOVER_MEM --time=$DATAMOVER_TIME rsync\""
 
