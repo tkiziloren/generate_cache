@@ -11,6 +11,7 @@ DATAMOVER_TIME="${DATAMOVER_TIME:-12:00:00}"
 ONLY="${ONLY:-all}"
 DRY_RUN="${DRY_RUN:-0}"
 DRY_RUN_SAMPLE="${DRY_RUN_SAMPLE:-1}"
+DRY_RUN_RSYNC="${DRY_RUN_RSYNC:-0}"
 DELETE_REMOTE="${DELETE_REMOTE:-0}"
 
 case "$ONLY" in
@@ -55,12 +56,15 @@ echo "Preparing remote NFS directories via datamover..."
 remote_prepare_command="srun --partition=datamover --mem=4G --time=00:30:00 bash -lc $(printf '%q' "$remote_prepare")"
 ssh "$REMOTE_HOST" "bash -l -c $(printf '%q' "$remote_prepare_command")"
 
-remote_srun="$(ssh "$REMOTE_HOST" "bash -l -c 'command -v srun'")"
-if [[ -z "$remote_srun" ]]; then
-  echo "Could not find srun on remote host: $REMOTE_HOST" >&2
-  exit 1
+remote_rsync=""
+if [[ "$DRY_RUN" != "1" || "$DRY_RUN_RSYNC" == "1" ]]; then
+  remote_srun="$(ssh "$REMOTE_HOST" "bash -l -c 'command -v srun'")"
+  if [[ -z "$remote_srun" ]]; then
+    echo "Could not find srun on remote host: $REMOTE_HOST" >&2
+    exit 1
+  fi
+  remote_rsync="$remote_srun --partition=datamover --mem=$DATAMOVER_MEM --time=$DATAMOVER_TIME rsync"
 fi
-remote_rsync="$remote_srun --partition=datamover --mem=$DATAMOVER_MEM --time=$DATAMOVER_TIME rsync"
 
 rsync_args=(
   -avh
@@ -88,12 +92,12 @@ sync_directory() {
   local entry_file=""
   local cleanup_entry_file=0
   local extra_args=()
+  local sample_count=0
 
   if [[ "$DRY_RUN" == "1" && "$DRY_RUN_SAMPLE" == "1" ]]; then
     entry_file="$(mktemp)"
     cleanup_entry_file=1
     find "$local_root" -mindepth 1 -maxdepth 1 -print | sort > "$entry_file"
-    sample_count=0
     while IFS= read -r path; do
       name="$(basename "$path")"
       if [[ -d "$path" ]]; then
@@ -110,11 +114,24 @@ sync_directory() {
   fi
 
   echo
-  echo "Syncing $label..."
+  if [[ "$DRY_RUN" == "1" && "$DRY_RUN_RSYNC" != "1" ]]; then
+    echo "Dry-run check for $label..."
+  else
+    echo "Syncing $label..."
+  fi
   echo "  local : $local_root"
   echo "  remote: $REMOTE_HOST:$remote_root/"
-  if [[ "$DRY_RUN" == "1" && "$DRY_RUN_SAMPLE" == "1" ]]; then
-    echo "  mode  : dry-run sample only, first 5 top-level entries"
+  if [[ "$DRY_RUN" == "1" && "$DRY_RUN_RSYNC" != "1" ]]; then
+    echo "  mode  : dry-run metadata only; no remote rsync server is started"
+    echo "  sample: first 5 top-level local entries"
+    find "$local_root" -mindepth 1 -maxdepth 1 -print | sort | sed -n '1,5p'
+    echo "  note  : set DRY_RUN_RSYNC=1 only if you want a full rsync dry-run"
+    if [[ "$cleanup_entry_file" == "1" ]]; then
+      rm -f "$entry_file"
+    fi
+    return 0
+  elif [[ "$DRY_RUN" == "1" && "$DRY_RUN_SAMPLE" == "1" ]]; then
+    echo "  mode  : rsync dry-run sample only, first 5 top-level entries"
   fi
 
   rsync "${rsync_args[@]}" "${extra_args[@]}" \
