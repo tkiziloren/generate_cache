@@ -134,10 +134,17 @@ sync_directory() {
     echo "  mode  : rsync dry-run sample only, first 5 top-level entries"
   fi
 
-  rsync "${rsync_args[@]}" "${extra_args[@]}" \
-    --rsync-path="$remote_rsync" \
-    "$local_root"/ \
-    "$REMOTE_HOST:$remote_root/"
+  if [[ "${#extra_args[@]}" -gt 0 ]]; then
+    rsync "${rsync_args[@]}" "${extra_args[@]}" \
+      --rsync-path="$remote_rsync" \
+      "$local_root"/ \
+      "$REMOTE_HOST:$remote_root/"
+  else
+    rsync "${rsync_args[@]}" \
+      --rsync-path="$remote_rsync" \
+      "$local_root"/ \
+      "$REMOTE_HOST:$remote_root/"
+  fi
 
   if [[ "$cleanup_entry_file" == "1" ]]; then
     rm -f "$entry_file"
