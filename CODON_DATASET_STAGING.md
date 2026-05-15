@@ -52,6 +52,51 @@ the rsync helper from the local machine. The remote rsync process is launched
 inside the Codon `datamover` partition, so writes to `/nfs/production/...` do
 not happen on the login node.
 
+For many small files, the zipped transfer workflow is preferred. It uploads one
+zip archive to Codon home, then extracts and mirrors the contents to NFS inside
+the `datamover` partition.
+
+Create archives locally:
+
+```bash
+cd /Users/tevfik/Sandbox/github/PHD/data/pdbbind
+zip -qr refined-set.zip refined-set
+
+cd /Users/tevfik/Sandbox/github/PHD/data
+zip -qr external_benchmarks.zip external_benchmarks
+```
+
+Check archive metadata without transfer:
+
+```bash
+cd /Users/tevfik/Sandbox/Tevfik/Projects/phd_examples/generate_cache
+
+DRY_RUN=1 \
+ONLY=pdbbind \
+scripts/transfer_zipped_datasets_to_codon_datamover.sh
+```
+
+Transfer and extract PDBBind:
+
+```bash
+cd /Users/tevfik/Sandbox/Tevfik/Projects/phd_examples/generate_cache
+
+ONLY=pdbbind \
+scripts/transfer_zipped_datasets_to_codon_datamover.sh
+```
+
+Transfer and extract external benchmarks:
+
+```bash
+cd /Users/tevfik/Sandbox/Tevfik/Projects/phd_examples/generate_cache
+
+ONLY=external \
+scripts/transfer_zipped_datasets_to_codon_datamover.sh
+```
+
+The older directory rsync workflow is still available below, but the zip
+workflow is less fragile for PDBBind-sized trees.
+
 Fast dry run with a small sample. This checks local inputs and remote datamover
 directory preparation, but does not start a remote rsync server:
 
