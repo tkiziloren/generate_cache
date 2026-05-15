@@ -1,7 +1,9 @@
 import argparse
+import os
 import shutil
 import subprocess
 import sys
+import urllib.request
 import zipfile
 from pathlib import Path
 
@@ -9,6 +11,8 @@ from pathlib import Path
 DEFAULT_DATA_ROOT = Path("/nfs/production/arl/chembl/tevfik/DEEP_APBS_DATASETS")
 DEFAULT_P2RANK_REPO = "https://github.com/rdk/p2rank-datasets.git"
 DEFAULT_PURESNET_REPO = "https://github.com/jivankandel/PUResNet.git"
+DEFAULT_PURESNET_COACH_URL = "https://media.githubusercontent.com/media/jivankandel/PUResNet/main/coach.zip"
+DEFAULT_PURESNET_BU48_URL = "https://media.githubusercontent.com/media/jivankandel/PUResNet/main/BU48.zip"
 
 
 def parse_args():
@@ -21,6 +25,8 @@ def parse_args():
     parser.add_argument("--skip-prepared", action="store_true")
     parser.add_argument("--p2rank-repo", default=DEFAULT_P2RANK_REPO)
     parser.add_argument("--puresnet-repo", default=DEFAULT_PURESNET_REPO)
+    parser.add_argument("--puresnet-coach-url", default=os.environ.get("PURESNET_COACH_URL", DEFAULT_PURESNET_COACH_URL))
+    parser.add_argument("--puresnet-bu48-url", default=os.environ.get("PURESNET_BU48_URL", DEFAULT_PURESNET_BU48_URL))
     return parser.parse_args()
 
 
@@ -96,7 +102,67 @@ def require_file(path, label):
         raise RuntimeError(f"Missing or empty {label}: {path}")
 
 
-def prepare_puresnet_sources(data_root, repo_url, force):
+def is_git_lfs_pointer(path):
+    if not path.exists() or path.stat().st_size > 4096:
+        return False
+    try:
+        head = path.read_text(errors="ignore")[:200]
+    except UnicodeDecodeError:
+        return False
+    return "version https://git-lfs.github.com/spec/v1" in head
+
+
+def git_lfs_pull(repo, include_paths):
+    version = subprocess.run(
+        ["git", "-C", str(repo), "lfs", "version"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    if version.returncode != 0:
+        log("[WARN] git-lfs is not available; falling back to direct download")
+        return False
+    include_value = ",".join(include_paths)
+    try:
+        run(["git", "-C", repo, "lfs", "install", "--local"])
+        run(["git", "-C", repo, "lfs", "pull", "--include", include_value])
+    except subprocess.CalledProcessError:
+        log("[WARN] git-lfs pull failed; falling back to direct download")
+        return False
+    return True
+
+
+def download_file(url, destination):
+    if not url:
+        raise RuntimeError(f"No fallback URL configured for {destination}")
+    tmp = destination.with_suffix(destination.suffix + ".download")
+    log(f"[GET] {url} -> {destination}")
+    urllib.request.urlretrieve(url, tmp)
+    tmp.replace(destination)
+
+
+def ensure_valid_zip(repo, archive, label, fallback_url):
+    require_file(archive, label)
+    if zipfile.is_zipfile(archive):
+        return
+
+    pointer_note = " Git LFS pointer detected." if is_git_lfs_pointer(archive) else ""
+    log(f"[WARN] {label} is not a valid zip:{pointer_note} {archive}")
+
+    git_lfs_pull(repo, [archive.name])
+    if zipfile.is_zipfile(archive):
+        return
+
+    download_file(fallback_url, archive)
+    if zipfile.is_zipfile(archive):
+        return
+
+    if is_git_lfs_pointer(archive):
+        raise RuntimeError(f"{label} is still a Git LFS pointer after download: {archive}")
+    raise RuntimeError(f"{label} is not a valid zip after Git LFS/direct download attempts: {archive}")
+
+
+def prepare_puresnet_sources(data_root, repo_url, force, coach_url, bu48_url):
     sources_root = data_root / "sources"
     repo = sources_root / "PUResNet"
     clone_or_pull(repo_url, repo)
@@ -105,8 +171,8 @@ def prepare_puresnet_sources(data_root, repo_url, force):
     ensure_dir(puresnet_root)
     coach_zip = repo / "coach.zip"
     bu48_zip = repo / "BU48.zip"
-    require_file(coach_zip, "PUResNet coach.zip")
-    require_file(bu48_zip, "PUResNet BU48.zip")
+    ensure_valid_zip(repo, coach_zip, "PUResNet coach.zip", coach_url)
+    ensure_valid_zip(repo, bu48_zip, "PUResNet BU48.zip", bu48_url)
     safe_extract_zip(coach_zip, puresnet_root / "coach", force=force)
     safe_extract_zip(bu48_zip, puresnet_root / "BU48", force=force)
     log(f"[OK] PUResNet BU48/COACH -> {puresnet_root}")
@@ -182,7 +248,13 @@ Prepared matched benchmark directory:
 def main():
     args = parse_args()
     ensure_dir(args.data_root / "datasets" / "external_benchmarks")
-    puresnet_root = prepare_puresnet_sources(args.data_root, args.puresnet_repo, args.force)
+    puresnet_root = prepare_puresnet_sources(
+        args.data_root,
+        args.puresnet_repo,
+        args.force,
+        args.puresnet_coach_url,
+        args.puresnet_bu48_url,
+    )
     p2rank_root = prepare_p2rank_subset(args.data_root, args.p2rank_repo, args.force)
     if not args.skip_prepared:
         prepare_matched_benchmark(args.repo_dir, args.data_root, puresnet_root, p2rank_root, args.force)
