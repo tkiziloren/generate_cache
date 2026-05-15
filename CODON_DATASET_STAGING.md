@@ -216,6 +216,40 @@ DATA_ROOT=/nfs/production/arl/chembl/tevfik/DEEP_APBS_DATASETS \
 sbatch scripts/run_codon_datamover_prepare_datasets.sbatch
 ```
 
+## Stage only BU48 and COACH420
+
+Once scPDB and PDBBind are already present, use this narrower workflow instead
+of staging all external benchmarks. It downloads:
+
+- PUResNet `coach.zip` and `BU48.zip`
+- P2Rank `coach420` and `joined/bu48` sparse checkout only
+- prepared matched benchmark files under `puresnet_prepared`
+
+```bash
+cd /homes/tevfik/PHD/generate_cache
+git pull
+
+DATA_ROOT=/nfs/production/arl/chembl/tevfik/DEEP_APBS_DATASETS \
+sbatch scripts/run_codon_datamover_prepare_bu48_coach.sbatch
+```
+
+Monitor:
+
+```bash
+squeue -u "$USER"
+tail -f /homes/tevfik/PHD/slurm_logs/bu48-coach-stage-<jobid>.out
+```
+
+Expected outputs:
+
+```text
+/nfs/production/arl/chembl/tevfik/DEEP_APBS_DATASETS/datasets/external_benchmarks/puresnet/coach
+/nfs/production/arl/chembl/tevfik/DEEP_APBS_DATASETS/datasets/external_benchmarks/puresnet/BU48
+/nfs/production/arl/chembl/tevfik/DEEP_APBS_DATASETS/datasets/external_benchmarks/p2rank-datasets/coach420
+/nfs/production/arl/chembl/tevfik/DEEP_APBS_DATASETS/datasets/external_benchmarks/p2rank-datasets/joined/bu48
+/nfs/production/arl/chembl/tevfik/DEEP_APBS_DATASETS/datasets/external_benchmarks/puresnet_prepared
+```
+
 ## Smoke cache run
 
 Run a small check before launching the full cache matrix:
