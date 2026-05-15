@@ -45,6 +45,45 @@ squeue -u "$USER"
 tail -f /homes/tevfik/PHD/slurm_logs/deep-apbs-stage-data-<jobid>.out
 ```
 
+## Transfer local datasets to Codon NFS
+
+If the local workstation already has PDBBind and external benchmark files, use
+the rsync helper from the local machine. The remote rsync process is launched
+inside the Codon `datamover` partition, so writes to `/nfs/production/...` do
+not happen on the login node.
+
+Dry run:
+
+```bash
+cd /Users/tevfik/Sandbox/Tevfik/Projects/phd_examples/generate_cache
+
+DRY_RUN=1 \
+scripts/rsync_local_datasets_to_codon_datamover.sh
+```
+
+Actual transfer:
+
+```bash
+cd /Users/tevfik/Sandbox/Tevfik/Projects/phd_examples/generate_cache
+
+scripts/rsync_local_datasets_to_codon_datamover.sh
+```
+
+Default local inputs:
+
+```text
+/Users/tevfik/Sandbox/github/PHD/data/pdbbind/refined-set
+/Users/tevfik/Sandbox/github/PHD/data/external_benchmarks
+```
+
+Default remote outputs:
+
+```text
+/nfs/production/arl/chembl/tevfik/DEEP_APBS_DATASETS/datasets/pdbbind/refined-set
+/nfs/production/arl/chembl/tevfik/DEEP_APBS_DATASETS/datasets/pdbbind2020/refined-set
+/nfs/production/arl/chembl/tevfik/DEEP_APBS_DATASETS/datasets/external_benchmarks
+```
+
 ## PDBBind note
 
 PDBBind usually requires licensed/manual access. The staging script therefore
