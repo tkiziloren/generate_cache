@@ -52,20 +52,41 @@ the rsync helper from the local machine. The remote rsync process is launched
 inside the Codon `datamover` partition, so writes to `/nfs/production/...` do
 not happen on the login node.
 
-Dry run:
+Fast dry run with a small sample:
 
 ```bash
 cd /Users/tevfik/Sandbox/Tevfik/Projects/phd_examples/generate_cache
 
 DRY_RUN=1 \
+ONLY=pdbbind \
 scripts/rsync_local_datasets_to_codon_datamover.sh
 ```
 
-Actual transfer:
+Transfer PDBBind first:
 
 ```bash
 cd /Users/tevfik/Sandbox/Tevfik/Projects/phd_examples/generate_cache
 
+ONLY=pdbbind \
+scripts/rsync_local_datasets_to_codon_datamover.sh
+```
+
+Then transfer external benchmarks:
+
+```bash
+cd /Users/tevfik/Sandbox/Tevfik/Projects/phd_examples/generate_cache
+
+ONLY=external \
+scripts/rsync_local_datasets_to_codon_datamover.sh
+```
+
+To force dry-run to compare the full tree instead of the first five top-level
+entries:
+
+```bash
+DRY_RUN=1 \
+DRY_RUN_SAMPLE=0 \
+ONLY=pdbbind \
 scripts/rsync_local_datasets_to_codon_datamover.sh
 ```
 

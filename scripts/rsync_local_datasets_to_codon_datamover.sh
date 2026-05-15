@@ -8,8 +8,18 @@ LOCAL_PDBBIND="${LOCAL_PDBBIND:-/Users/tevfik/Sandbox/github/PHD/data/pdbbind/re
 LOCAL_EXTERNAL_BENCHMARKS="${LOCAL_EXTERNAL_BENCHMARKS:-/Users/tevfik/Sandbox/github/PHD/data/external_benchmarks}"
 DATAMOVER_MEM="${DATAMOVER_MEM:-8G}"
 DATAMOVER_TIME="${DATAMOVER_TIME:-12:00:00}"
+ONLY="${ONLY:-all}"
 DRY_RUN="${DRY_RUN:-0}"
+DRY_RUN_SAMPLE="${DRY_RUN_SAMPLE:-1}"
 DELETE_REMOTE="${DELETE_REMOTE:-0}"
+
+case "$ONLY" in
+  all|pdbbind|external) ;;
+  *)
+    echo "ONLY must be one of: all, pdbbind, external" >&2
+    exit 1
+    ;;
+esac
 
 if [[ ! -d "$LOCAL_PDBBIND" ]]; then
   echo "Missing local PDBBind directory: $LOCAL_PDBBIND" >&2
@@ -71,23 +81,58 @@ if [[ "$DELETE_REMOTE" == "1" ]]; then
   rsync_args+=(--delete-after)
 fi
 
-echo
-echo "Syncing PDBBind refined-set..."
-echo "  local : $LOCAL_PDBBIND"
-echo "  remote: $REMOTE_HOST:$DATA_ROOT/datasets/pdbbind/refined-set/"
-rsync "${rsync_args[@]}" \
-  --rsync-path="$remote_rsync" \
-  "$LOCAL_PDBBIND"/ \
-  "$REMOTE_HOST:$DATA_ROOT/datasets/pdbbind/refined-set/"
+sync_directory() {
+  local label="$1"
+  local local_root="$2"
+  local remote_root="$3"
+  local include_file=""
+  local cleanup_include_file=0
+  local extra_args=()
 
-echo
-echo "Syncing external benchmarks..."
-echo "  local : $LOCAL_EXTERNAL_BENCHMARKS"
-echo "  remote: $REMOTE_HOST:$DATA_ROOT/datasets/external_benchmarks/"
-rsync "${rsync_args[@]}" \
-  --rsync-path="$remote_rsync" \
-  "$LOCAL_EXTERNAL_BENCHMARKS"/ \
-  "$REMOTE_HOST:$DATA_ROOT/datasets/external_benchmarks/"
+  if [[ "$DRY_RUN" == "1" && "$DRY_RUN_SAMPLE" == "1" ]]; then
+    include_file="$(mktemp)"
+    cleanup_include_file=1
+    {
+      echo "*/"
+      find "$local_root" -mindepth 1 -maxdepth 1 | sort | head -5 | while read -r path; do
+        printf "/%s/***\n" "$(basename "$path")"
+      done
+      echo "- *"
+    } > "$include_file"
+    extra_args+=(--filter="merge $include_file")
+  fi
+
+  echo
+  echo "Syncing $label..."
+  echo "  local : $local_root"
+  echo "  remote: $REMOTE_HOST:$remote_root/"
+  if [[ "$DRY_RUN" == "1" && "$DRY_RUN_SAMPLE" == "1" ]]; then
+    echo "  mode  : dry-run sample only, first 5 top-level entries"
+  fi
+
+  rsync "${rsync_args[@]}" "${extra_args[@]}" \
+    --rsync-path="$remote_rsync" \
+    "$local_root"/ \
+    "$REMOTE_HOST:$remote_root/"
+
+  if [[ "$cleanup_include_file" == "1" ]]; then
+    rm -f "$include_file"
+  fi
+}
+
+if [[ "$ONLY" == "all" || "$ONLY" == "pdbbind" ]]; then
+  sync_directory \
+    "PDBBind refined-set" \
+    "$LOCAL_PDBBIND" \
+    "$DATA_ROOT/datasets/pdbbind/refined-set"
+fi
+
+if [[ "$ONLY" == "all" || "$ONLY" == "external" ]]; then
+  sync_directory \
+    "external benchmarks" \
+    "$LOCAL_EXTERNAL_BENCHMARKS" \
+    "$DATA_ROOT/datasets/external_benchmarks"
+fi
 
 echo
 echo "Done."
