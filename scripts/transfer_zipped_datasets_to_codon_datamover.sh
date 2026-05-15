@@ -4,8 +4,8 @@ set -euo pipefail
 
 REMOTE_HOST="${REMOTE_HOST:-codon}"
 REMOTE_REPO_DIR="${REMOTE_REPO_DIR:-/homes/tevfik/PHD/generate_cache}"
-REMOTE_INCOMING="${REMOTE_INCOMING:-/homes/tevfik/PHD/deep_apbs_uploads}"
 DATA_ROOT="${DATA_ROOT:-/nfs/production/arl/chembl/tevfik/DEEP_APBS_DATASETS}"
+REMOTE_INCOMING="${REMOTE_INCOMING:-$DATA_ROOT/archives/uploads}"
 LOCAL_PDBBIND_ZIP="${LOCAL_PDBBIND_ZIP:-/Users/tevfik/Sandbox/github/PHD/data/pdbbind/refined-set.zip}"
 LOCAL_EXTERNAL_BENCHMARKS_ZIP="${LOCAL_EXTERNAL_BENCHMARKS_ZIP:-/Users/tevfik/Sandbox/github/PHD/data/external_benchmarks.zip}"
 DATAMOVER_MEM="${DATAMOVER_MEM:-16G}"
@@ -16,6 +16,7 @@ EXTRACT_ONLY="${EXTRACT_ONLY:-0}"
 TRANSFER_ONLY="${TRANSFER_ONLY:-0}"
 KEEP_REMOTE_ZIP="${KEEP_REMOTE_ZIP:-0}"
 CLEAN_STAGING="${CLEAN_STAGING:-1}"
+UPLOAD_MODE="${UPLOAD_MODE:-stream_datamover}"
 
 case "$ONLY" in
   all|pdbbind|external) ;;
@@ -56,9 +57,50 @@ remote_datamover() {
   remote_login "$wrapped"
 }
 
+stream_archive_to_datamover() {
+  local archive="$1"
+  local label="$2"
+  local remote_archive="$3"
+  local command
+
+  command=$(cat <<EOF
+set -euo pipefail
+remote_archive=$(printf '%q' "$remote_archive")
+mkdir -p "\$(dirname "\$remote_archive")"
+tmp="\$remote_archive.part.\$\$"
+echo "[STREAM] stdin -> \$remote_archive"
+cat > "\$tmp"
+mv "\$tmp" "\$remote_archive"
+ls -lh "\$remote_archive"
+EOF
+)
+
+  echo
+  echo "Streaming $label archive directly to NFS via datamover..."
+  echo "  local : $archive"
+  echo "  remote: $REMOTE_HOST:$remote_archive"
+  if command -v pv >/dev/null 2>&1; then
+    pv "$archive" | remote_datamover "$command"
+  else
+    echo "  note  : install pv locally for progress; using cat without progress"
+    cat "$archive" | remote_datamover "$command"
+  fi
+}
+
 transfer_archive() {
   local archive="$1"
   local label="$2"
+  local remote_archive="$3"
+
+  if [[ "$UPLOAD_MODE" == "stream_datamover" ]]; then
+    stream_archive_to_datamover "$archive" "$label" "$remote_archive"
+    return
+  fi
+
+  if [[ "$UPLOAD_MODE" != "home_rsync" ]]; then
+    echo "UPLOAD_MODE must be one of: stream_datamover, home_rsync" >&2
+    exit 1
+  fi
 
   echo
   echo "Uploading $label archive to Codon home..."
@@ -191,7 +233,7 @@ process_dataset() {
   fi
 
   if [[ "$EXTRACT_ONLY" != "1" ]]; then
-    transfer_archive "$local_archive" "$label"
+    transfer_archive "$local_archive" "$label" "$remote_archive"
   fi
 
   if [[ "$TRANSFER_ONLY" != "1" ]]; then

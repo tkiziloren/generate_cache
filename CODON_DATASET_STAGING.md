@@ -52,9 +52,10 @@ the rsync helper from the local machine. The remote rsync process is launched
 inside the Codon `datamover` partition, so writes to `/nfs/production/...` do
 not happen on the login node.
 
-For many small files, the zipped transfer workflow is preferred. It uploads one
-zip archive to Codon home, then extracts and mirrors the contents to NFS inside
-the `datamover` partition.
+For many small files, the zipped transfer workflow is preferred. It streams one
+zip archive directly into NFS through a Codon `datamover` job, then extracts and
+mirrors the contents to the final NFS dataset directory inside the same
+partition. This avoids home-directory quota problems.
 
 Create archives locally:
 
@@ -91,6 +92,21 @@ Transfer and extract external benchmarks:
 cd /Users/tevfik/Sandbox/Tevfik/Projects/phd_examples/generate_cache
 
 ONLY=external \
+scripts/transfer_zipped_datasets_to_codon_datamover.sh
+```
+
+By default archives are streamed to:
+
+```text
+/nfs/production/arl/chembl/tevfik/DEEP_APBS_DATASETS/archives/uploads/
+```
+
+If you intentionally want to upload through Codon home instead, use:
+
+```bash
+UPLOAD_MODE=home_rsync \
+REMOTE_INCOMING=/homes/tevfik/PHD/deep_apbs_uploads \
+ONLY=pdbbind \
 scripts/transfer_zipped_datasets_to_codon_datamover.sh
 ```
 
