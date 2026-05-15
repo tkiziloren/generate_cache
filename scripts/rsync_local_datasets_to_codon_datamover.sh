@@ -51,7 +51,8 @@ rsync_args=(
   -avh
   --partial
   --inplace
-  --info=progress2
+  --progress
+  --stats
   --exclude ".DS_Store"
   --exclude "__pycache__"
   --exclude ".git"
