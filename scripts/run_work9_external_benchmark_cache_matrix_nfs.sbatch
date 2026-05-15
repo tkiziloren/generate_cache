@@ -12,6 +12,7 @@ REPO_DIR="${REPO_DIR:-/homes/tevfik/PHD/generate_cache}"
 DATA_ROOT="${DATA_ROOT:-/nfs/production/arl/chembl/tevfik/DEEP_APBS_DATASETS}"
 PYTHON_BIN="${PYTHON_BIN:-$REPO_DIR/.conda/bin/python}"
 PATH="$REPO_DIR/.conda/bin:$PATH"
+export PYTHONPATH="$REPO_DIR:${PYTHONPATH:-}"
 
 GRID_SPECS="${GRID_SPECS:-36:70 72:160 161:160}"
 NPROC="${NPROC:-8}"
