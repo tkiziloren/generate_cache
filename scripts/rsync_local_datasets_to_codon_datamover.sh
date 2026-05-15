@@ -86,17 +86,25 @@ sync_directory() {
   local local_root="$2"
   local remote_root="$3"
   local include_file=""
+  local entry_file=""
   local cleanup_include_file=0
   local extra_args=()
 
   if [[ "$DRY_RUN" == "1" && "$DRY_RUN_SAMPLE" == "1" ]]; then
     include_file="$(mktemp)"
+    entry_file="$(mktemp)"
     cleanup_include_file=1
+    find "$local_root" -mindepth 1 -maxdepth 1 -print | sort > "$entry_file"
     {
       echo "*/"
-      find "$local_root" -mindepth 1 -maxdepth 1 | sort | head -5 | while read -r path; do
+      sample_count=0
+      while IFS= read -r path; do
         printf "/%s/***\n" "$(basename "$path")"
-      done
+        sample_count=$((sample_count + 1))
+        if [[ "$sample_count" -ge 5 ]]; then
+          break
+        fi
+      done < "$entry_file"
       echo "- *"
     } > "$include_file"
     extra_args+=(--filter="merge $include_file")
@@ -117,6 +125,7 @@ sync_directory() {
 
   if [[ "$cleanup_include_file" == "1" ]]; then
     rm -f "$include_file"
+    rm -f "$entry_file"
   fi
 }
 
