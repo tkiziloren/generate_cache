@@ -13,9 +13,8 @@ DEFAULT_DATA_ROOT = Path("/nfs/production/arl/chembl/tevfik/DEEP_APBS_DATASETS")
 DEFAULT_SCPDB_URL = "https://drugdesign.unistra.fr/scPDB/ressources/2016/scPDB.tar.gz"
 DEFAULT_P2RANK_REPO = "https://github.com/rdk/p2rank-datasets.git"
 DEFAULT_PURESNET_REPO = "https://github.com/jivankandel/PUResNet.git"
-DEFAULT_PDBBIND2020_REFINED_URL = (
-    "https://www.pdbbind-plus.org.cn/download/pdbbind_v2020_refined.tar.gz"
-)
+DEFAULT_PDBBIND2020_REFINED_URL = ""
+PDBBIND_MIN_ARCHIVE_BYTES = 10 * 1024 * 1024
 
 
 def parse_args():
@@ -79,6 +78,21 @@ def find_existing_archive(archive_dir, names):
         if candidate.exists() and candidate.stat().st_size > 0:
             return candidate
     return None
+
+
+def validate_tar_archive(archive, label, min_size_bytes=0):
+    size = archive.stat().st_size
+    if min_size_bytes and size < min_size_bytes:
+        raise RuntimeError(
+            f"{label} archive is too small ({size} bytes): {archive}. "
+            "This usually means the download returned an HTML/login/error page, "
+            "not the real dataset archive."
+        )
+    if not tarfile.is_tarfile(archive):
+        raise RuntimeError(
+            f"{label} archive is not a valid tar file: {archive}. "
+            "Place the official tar.gz archive under the archives directory and rerun."
+        )
 
 
 def safe_extract_tar(tf, destination):
@@ -217,8 +231,16 @@ def prepare_pdbbind(data_root, archives, staging, force):
         ],
     )
     if archive is None:
+        if not refined_2020_url:
+            raise RuntimeError(
+                "PDBBind refined-set archive was not found under the archives directory. "
+                "PDBBind usually requires licensed/manual access, so this script does not "
+                "guess a public URL. Place pdbbind_v2020_refined.tar.gz under archives/ "
+                "or provide PDBBIND2020_REFINED_URL explicitly."
+            )
         archive = download(refined_2020_url, archives / "pdbbind_v2020_refined.tar.gz")
 
+    validate_tar_archive(archive, "PDBBind refined-set", PDBBIND_MIN_ARCHIVE_BYTES)
     extracted = extract_archive(archive, staging / "pdbbind2020_refined_extract", force=force)
     payload = find_pdbbind_refined_payload(extracted)
     final_2020 = data_root / "datasets" / "pdbbind2020" / "refined-set"

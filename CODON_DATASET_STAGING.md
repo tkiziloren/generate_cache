@@ -47,8 +47,11 @@ tail -f /homes/tevfik/PHD/slurm_logs/deep-apbs-stage-data-<jobid>.out
 
 ## PDBBind note
 
-PDBBind downloads may require licensed/manual access. If the direct URL fails,
-place the official archive in:
+PDBBind usually requires licensed/manual access. The staging script therefore
+expects the official archive to be present locally, unless an explicit
+`PDBBIND2020_REFINED_URL` environment variable is provided.
+
+Place the official archive in:
 
 ```text
 /nfs/production/arl/chembl/tevfik/DEEP_APBS_DATASETS/archives/
@@ -70,6 +73,17 @@ SKIP_SCPDB=1 \
 SKIP_PURESNET=1 \
 SKIP_P2RANK=1 \
 FORCE=1 \
+sbatch scripts/run_codon_datamover_prepare_datasets.sbatch
+```
+
+If a direct refined-set URL is available in your PDBBind account/session:
+
+```bash
+PDBBIND2020_REFINED_URL=https://.../pdbbind_v2020_refined.tar.gz \
+DATA_ROOT=/nfs/production/arl/chembl/tevfik/DEEP_APBS_DATASETS \
+SKIP_SCPDB=1 \
+SKIP_PURESNET=1 \
+SKIP_P2RANK=1 \
 sbatch scripts/run_codon_datamover_prepare_datasets.sbatch
 ```
 
