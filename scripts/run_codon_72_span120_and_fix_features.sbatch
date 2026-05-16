@@ -257,6 +257,7 @@ augment_dir() {
     --input-dir "$dir" \
     --glob "*.h5" \
     --in-place \
+    --nproc "$NPROC" \
     --summary-csv "$dir/feature_schema_update.csv" \
     "${feature_fix_overwrite_args[@]}" \
     "${drop_legacy_apbs_args[@]}"

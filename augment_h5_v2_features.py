@@ -15,6 +15,7 @@ this script adds the derived v2 normalization channels automatically.
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ProcessPoolExecutor
 import csv
 import shutil
 from pathlib import Path
@@ -49,6 +50,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", default=None, help="Copy H5 files here before augmenting.")
     parser.add_argument("--in-place", action="store_true", help="Modify input H5 files directly.")
     parser.add_argument("--overwrite", action="store_true", help="Replace derived channels if they already exist.")
+    parser.add_argument(
+        "--nproc",
+        type=int,
+        default=1,
+        help="Number of parallel H5 files to process. Use 1 for sequential processing.",
+    )
     parser.add_argument(
         "--full-signed-scale",
         type=float,
@@ -426,28 +433,51 @@ def summary_path(args: argparse.Namespace) -> Path:
     return Path.cwd() / "v2_augment_summary.csv"
 
 
+def process_target(task: tuple[int, Path, Path, argparse.Namespace]) -> dict[str, str | int]:
+    index, source, target, args = task
+    row = augment_one(target, args)
+    row["index"] = index
+    row["source_path"] = str(source)
+    return row
+
+
 def main() -> None:
     args = parse_args()
+    if args.nproc < 1:
+        raise SystemExit("--nproc must be at least 1")
+
     source_paths = discover_h5_paths(args)
     targets = prepare_targets(source_paths, args)
 
     rows = []
     total_targets = len(targets)
-    for index, (source, target) in enumerate(targets, start=1):
-        row = augment_one(target, args)
-        row["source_path"] = str(source)
+    tasks = [
+        (index, source, target, args)
+        for index, (source, target) in enumerate(targets, start=1)
+    ]
+
+    if args.nproc == 1:
+        iterator = map(process_target, tasks)
+    else:
+        executor = ProcessPoolExecutor(max_workers=args.nproc)
+        iterator = executor.map(process_target, tasks)
+
+    for completed, row in enumerate(iterator, start=1):
         rows.append(row)
         print(
-            f"[PROGRESS] feature schema {index}/{total_targets} completed | "
-            f"remaining={total_targets - index} | added={row['created_count']} | "
-            f"path={target} | skipped={row['skipped_sources']}",
+            f"[PROGRESS] feature schema {completed}/{total_targets} completed | "
+            f"remaining={total_targets - completed} | added={row['created_count']} | "
+            f"path={row['path']} | skipped={row['skipped_sources']}",
             flush=True,
         )
+    if args.nproc != 1:
+        executor.shutdown()
 
     csv_path = summary_path(args)
     csv_path.parent.mkdir(parents=True, exist_ok=True)
     with open(csv_path, "w", newline="") as handle:
         fieldnames = [
+            "index",
             "source_path",
             "path",
             "created_count",
