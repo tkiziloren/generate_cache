@@ -307,7 +307,10 @@ if [[ "$FIX_FEATURES" == "1" ]]; then
   if [[ "$RUN_SCPDB_72" == "1" || "$FIX_EXISTING_SCPDB" == "1" ]]; then
     augment_dir "$WORK11_ROOT/scpdb/label_${SCPDB_LABEL_SOURCE}/box${BOX_SIZE}_span${span_label}"
   fi
-  augment_dir "$WORK11_ROOT/pdbbind/refined-set/box${BOX_SIZE}_span${span_label}"
+
+  if [[ "$RUN_PDBBIND_72" == "1" || "$FIX_EXISTING_PDBBIND" == "1" ]]; then
+    augment_dir "$WORK11_ROOT/pdbbind/refined-set/box${BOX_SIZE}_span${span_label}"
+  fi
 
   if [[ "$FIX_EXISTING_PDBBIND" == "1" ]]; then
     augment_dir "$WORK11_ROOT/pdbbind/refined-set/box36_span70"
@@ -338,7 +341,9 @@ if [[ "$APPEND_FULL_PROTEIN_APBS_V2" == "1" ]]; then
     echo "[SKIP] scPDB full-protein APBS v2 append is intentionally not wired in this job."
   fi
 
-  append_full_protein_apbs_v2_dir "$WORK11_ROOT/pdbbind/refined-set/box${BOX_SIZE}_span${span_label}" "pdbbind"
+  if [[ "$RUN_PDBBIND_72" == "1" || "$FIX_EXISTING_PDBBIND" == "1" ]]; then
+    append_full_protein_apbs_v2_dir "$WORK11_ROOT/pdbbind/refined-set/box${BOX_SIZE}_span${span_label}" "pdbbind"
+  fi
 
   if [[ "$FIX_EXISTING_PDBBIND" == "1" ]]; then
     append_full_protein_apbs_v2_dir "$WORK11_ROOT/pdbbind/refined-set/box36_span70" "pdbbind"
