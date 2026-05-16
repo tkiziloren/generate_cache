@@ -29,6 +29,7 @@ from augment_h5_v2_features import (
 )
 from generate_cache_pdbbind_gridfix import (
     GridSpec,
+    mol2_to_pdb,
     normalize_pdb_for_apbs,
     pdb2pqr_wrapper,
     run_apbs,
@@ -55,10 +56,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("h5_paths", nargs="*", help="One or more H5 files.")
     parser.add_argument("--input-dir", default=None, help="Directory to search for H5 files.")
     parser.add_argument("--glob", default="*.h5", help="Glob used with --input-dir.")
-    parser.add_argument("--source-type", choices=("auto", "pdbbind", "external"), default="auto")
+    parser.add_argument("--source-type", choices=("auto", "pdbbind", "external", "scpdb"), default="auto")
     parser.add_argument(
         "--pdbbind-root",
         default="/nfs/production/arl/chembl/tevfik/DEEP_APBS_DATASETS/datasets/pdbbind/refined-set",
+    )
+    parser.add_argument(
+        "--scpdb-root",
+        default="/nfs/production/arl/chembl/tevfik/DEEP_APBS_DATASETS/datasets/scPDB",
     )
     parser.add_argument(
         "--external-prepared-root",
@@ -67,6 +72,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--nproc", type=int, default=1)
     parser.add_argument("--apbs-bin", default="apbs")
     parser.add_argument("--pdb2pqr-bin", default="pdb2pqr30")
+    parser.add_argument("--obabel-bin", default="obabel")
     parser.add_argument("--apbs-timeout", type=int, default=120)
     parser.add_argument("--full-signed-scale", type=float, default=150.0)
     parser.add_argument("--overwrite", action="store_true", help="Recompute existing v2 APBS channels.")
@@ -118,6 +124,14 @@ def external_dataset_from_h5(path: Path) -> str | None:
 def find_source_protein(h5_path: Path, args: argparse.Namespace) -> tuple[str, Path]:
     case = case_name_from_h5(h5_path)
     candidates: list[tuple[str, Path]] = []
+    if args.source_type in {"auto", "scpdb"}:
+        scpdb_case_dir = Path(args.scpdb_root).expanduser().resolve() / case
+        candidates.extend(
+            [
+                ("scpdb", scpdb_case_dir / "protein.mol2"),
+                ("scpdb", scpdb_case_dir / "protein.pdb"),
+            ]
+        )
     if args.source_type in {"auto", "external"}:
         dataset = external_dataset_from_h5(h5_path)
         if dataset:
@@ -150,11 +164,17 @@ def grid_from_h5(h5f: h5py.File) -> GridSpec:
     return GridSpec(center=center, box_size=box_size, resolution=resolution, origin=origin)
 
 
-def prepare_full_protein(source_pdb: Path, output_pdb: Path) -> Path:
-    structure = pr.parsePDB(str(source_pdb))
+def prepare_full_protein(source_structure: Path, output_pdb: Path, obabel_bin: str = "obabel") -> Path:
+    parse_input = source_structure
+    if source_structure.suffix.lower() == ".mol2":
+        converted_pdb = output_pdb.with_name(f"{output_pdb.stem}_from_mol2.pdb")
+        mol2_to_pdb(str(source_structure), str(converted_pdb), obabel_bin=obabel_bin)
+        parse_input = converted_pdb
+
+    structure = pr.parsePDB(str(parse_input))
     if structure is None or structure.numAtoms() == 0:
-        raise RuntimeError(f"No atoms found in source protein: {source_pdb}")
-    protein = select_protein_heavy_atoms(structure, str(source_pdb))
+        raise RuntimeError(f"No atoms found in source protein: {source_structure}")
+    protein = select_protein_heavy_atoms(structure, str(source_structure))
     pr.writePDB(str(output_pdb), protein)
     normalize_pdb_for_apbs(str(output_pdb))
     return output_pdb
@@ -191,7 +211,7 @@ def append_one(task: tuple) -> dict[str, str | int]:
 
         full_protein_pdb = Path(work_dir) / "full_protein.pdb"
         full_protein_pqr = Path(work_dir) / "full_protein.pqr"
-        prepare_full_protein(source_protein, full_protein_pdb)
+        prepare_full_protein(source_protein, full_protein_pdb, obabel_bin=args.obabel_bin)
         pdb2pqr_wrapper(str(full_protein_pdb), str(full_protein_pqr), pdb2pqr_bin=args.pdb2pqr_bin)
         apbs_grid = run_apbs(
             str(full_protein_pdb),

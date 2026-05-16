@@ -291,6 +291,7 @@ append_full_protein_apbs_v2_dir() {
     --input-dir "$dir" \
     --glob "*.h5" \
     --source-type "$source_type" \
+    --scpdb-root "$SCPDB_ROOT" \
     --pdbbind-root "$PDBBIND_ROOT" \
     --external-prepared-root "$PREPARED_ROOT" \
     --nproc "$NPROC" \
@@ -339,7 +340,14 @@ if [[ "$APPEND_FULL_PROTEIN_APBS_V2" == "1" ]]; then
   progress_stage "Compute and append full-protein APBS v2 for selected cache directories"
 
   if [[ "$RUN_SCPDB_72" == "1" || "$FIX_EXISTING_SCPDB" == "1" ]]; then
-    echo "[SKIP] scPDB full-protein APBS v2 append is intentionally not wired in this job."
+    append_full_protein_apbs_v2_dir "$WORK11_ROOT/scpdb/label_${SCPDB_LABEL_SOURCE}/box${BOX_SIZE}_span${span_label}" "scpdb"
+  fi
+
+  if [[ "$FIX_EXISTING_SCPDB" == "1" ]]; then
+    append_full_protein_apbs_v2_dir "$WORK11_ROOT/scpdb/label_${SCPDB_LABEL_SOURCE}/box36_span70" "scpdb"
+    append_full_protein_apbs_v2_dir "$WORK11_ROOT/scpdb/label_${SCPDB_LABEL_SOURCE}/box72_span70" "scpdb"
+    append_full_protein_apbs_v2_dir "$WORK11_ROOT/scpdb/label_${SCPDB_LABEL_SOURCE}/box72_span160" "scpdb"
+    append_full_protein_apbs_v2_dir "$WORK11_ROOT/scpdb/label_${SCPDB_LABEL_SOURCE}/box161_span160" "scpdb"
   fi
 
   if [[ "$RUN_PDBBIND_72" == "1" || "$FIX_EXISTING_PDBBIND" == "1" ]]; then
