@@ -37,6 +37,8 @@ STANDARD_PROTEIN_RESNAMES = {
     "ASH", "GLH", "HID", "HIE", "HIP", "HSD", "HSE", "HSP", "CYX", "CYM",
 }
 
+BACKBONE_ATOMS = {"N", "CA", "C", "O"}
+
 
 @contextlib.contextmanager
 def suppress_native_stderr():
@@ -171,22 +173,182 @@ def select_protein_heavy_atoms(atom_group, source_name):
     return atom_group[indices]
 
 
+def _infer_element(atom_name, element):
+    element = str(element or "").strip()
+    if element:
+        return element[:2].upper()
+    atom_name = str(atom_name or "").strip()
+    for char in atom_name:
+        if char.isalpha():
+            return char.upper()
+    return ""
+
+
+def _format_pdb_atom_line(serial, atom_name, resname, chain, resseq, x, y, z, element):
+    atom_name = str(atom_name).strip()[:4]
+    resname = str(resname).strip().upper()[:3]
+    chain = (str(chain).strip() or "A")[:1]
+    element = _infer_element(atom_name, element)
+    return (
+        f"ATOM  {serial:5d} {atom_name:^4s} {resname:>3s} {chain}{resseq:4d}    "
+        f"{x:8.3f}{y:8.3f}{z:8.3f}{1.00:6.2f}{0.00:6.2f}          {element:>2s}\n"
+    )
+
+
+def sanitize_protein_pdb_for_pdb2pqr(input_pdb, output_pdb=None, require_complete_backbone=True):
+    """Write a conservative protein-only PDB that is easier for PDB2PQR/APBS to parse."""
+    output_pdb = output_pdb or input_pdb
+    residues = []
+    residue_lookup = {}
+
+    with open(input_pdb, "r") as handle:
+        for line in handle:
+            if not line.startswith(("ATOM", "HETATM")):
+                continue
+            altloc = line[16:17]
+            if altloc not in (" ", "A"):
+                continue
+            resname = line[17:20].strip().upper()
+            if resname not in STANDARD_PROTEIN_RESNAMES:
+                continue
+            atom_name = line[12:16].strip()
+            element = _infer_element(atom_name, line[76:78] if len(line) >= 78 else "")
+            if element == "H" or atom_name.upper().startswith("H"):
+                continue
+            try:
+                coord = (
+                    float(line[30:38]),
+                    float(line[38:46]),
+                    float(line[46:54]),
+                )
+            except ValueError:
+                continue
+
+            chain = line[21:22].strip() or "A"
+            key = (chain, line[22:26].strip(), line[26:27].strip(), resname)
+            if key not in residue_lookup:
+                residue_lookup[key] = {"key": key, "atoms": []}
+                residues.append(residue_lookup[key])
+            residue_lookup[key]["atoms"].append(
+                {
+                    "atom_name": atom_name,
+                    "resname": resname,
+                    "chain": chain,
+                    "coord": coord,
+                    "element": element,
+                }
+            )
+
+    kept_residues = []
+    dropped_residues = 0
+    for residue in residues:
+        atom_names = {atom["atom_name"].upper() for atom in residue["atoms"]}
+        if require_complete_backbone and not BACKBONE_ATOMS.issubset(atom_names):
+            dropped_residues += 1
+            continue
+        kept_residues.append(residue)
+
+    if not kept_residues:
+        raise RuntimeError(f"No PDB2PQR-safe protein residues remain after sanitizing {input_pdb}")
+
+    tmp_output = f"{output_pdb}.sanitize_tmp"
+    serial = 1
+    residue_numbers_by_chain = {}
+    with open(tmp_output, "w") as handle:
+        for residue in kept_residues:
+            chain = residue["atoms"][0]["chain"]
+            residue_numbers_by_chain[chain] = residue_numbers_by_chain.get(chain, 0) + 1
+            clean_resseq = residue_numbers_by_chain[chain]
+            for atom in residue["atoms"]:
+                x, y, z = atom["coord"]
+                handle.write(
+                    _format_pdb_atom_line(
+                        serial,
+                        atom["atom_name"],
+                        atom["resname"],
+                        chain,
+                        clean_resseq,
+                        x,
+                        y,
+                        z,
+                        atom["element"],
+                    )
+                )
+                serial += 1
+        handle.write("END\n")
+    os.replace(tmp_output, output_pdb)
+    if dropped_residues:
+        print(
+            f"[WARN] Sanitized {input_pdb}: dropped {dropped_residues} incomplete residues before PDB2PQR.",
+            flush=True,
+        )
+    return output_pdb
+
+
 def pdb2pqr_wrapper(selected_pdb, pqr_file, pdb2pqr_bin="pdb2pqr30"):
-    cmd = [
+    base_cmd = [
         pdb2pqr_bin,
         "--with-ph=7.4",
         "--ff=AMBER",
         "--keep-chain",
-        selected_pdb,
-        pqr_file,
     ]
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    out, err = proc.communicate()
-    if proc.returncode != 0:
-        raise RuntimeError(f"pdb2pqr failed for {selected_pdb}: {err.decode(errors='replace')}")
-    if not os.path.exists(pqr_file) or os.path.getsize(pqr_file) == 0:
-        raise RuntimeError(f"pdb2pqr created empty or no file: {pqr_file}")
-    return pqr_file
+
+    def run_pdb2pqr(input_pdb, output_pqr, extra_args=None):
+        cmd = [
+            *base_cmd,
+            *(extra_args or []),
+            input_pdb,
+            output_pqr,
+        ]
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        out, err = proc.communicate()
+        if proc.returncode != 0:
+            raise RuntimeError(err.decode(errors="replace"))
+        if not os.path.exists(output_pqr) or os.path.getsize(output_pqr) == 0:
+            raise RuntimeError(f"pdb2pqr created empty or no file: {output_pqr}")
+        return output_pqr
+
+    try:
+        return run_pdb2pqr(selected_pdb, pqr_file)
+    except RuntimeError as first_error:
+        sanitized_pdb = os.path.join(
+            os.path.dirname(selected_pdb),
+            f"{os.path.splitext(os.path.basename(selected_pdb))[0]}_pdb2pqr_safe.pdb",
+        )
+        try:
+            sanitize_protein_pdb_for_pdb2pqr(selected_pdb, sanitized_pdb)
+        except RuntimeError as sanitize_error:
+            raise RuntimeError(
+                "pdb2pqr failed for "
+                f"{selected_pdb}.\nInitial error:\n{first_error}\n"
+                f"Sanitization error:\n{sanitize_error}"
+            ) from sanitize_error
+        try:
+            return run_pdb2pqr(sanitized_pdb, pqr_file)
+        except RuntimeError as second_error:
+            try:
+                return run_pdb2pqr(sanitized_pdb, pqr_file, extra_args=["--nodebump"])
+            except RuntimeError as third_error:
+                raise RuntimeError(
+                    "pdb2pqr failed for "
+                    f"{selected_pdb}.\nInitial error:\n{first_error}\n"
+                    f"Sanitized retry error:\n{second_error}\n"
+                    f"Sanitized --nodebump retry error:\n{third_error}"
+                ) from third_error
+
+
+def normalize_pdb_for_apbs(input_pdb):
+    sanitize_protein_pdb_for_pdb2pqr(input_pdb, input_pdb, require_complete_backbone=True)
+    return input_pdb
+
+
+def rewrite_atom_records_only(pdb_file):
+    with open(pdb_file, "r") as fin:
+        atom_lines = [line for line in fin if line.startswith(("ATOM", "HETATM"))]
+    if not atom_lines:
+        raise RuntimeError(f"No atom records found in: {pdb_file}")
+    with open(pdb_file, "w") as fout:
+        fout.writelines(atom_lines)
 
 
 def prepare_protein_pocket(protein_pdb, ligand_pdb, pocket_pdb, selected_pdb):
@@ -196,6 +358,7 @@ def prepare_protein_pocket(protein_pdb, ligand_pdb, pocket_pdb, selected_pdb):
 
     structure = select_protein_heavy_atoms(structure, protein_pdb)
     pr.writePDB(protein_pdb, structure)
+    normalize_pdb_for_apbs(protein_pdb)
 
     protein = pr.parsePDB(protein_pdb)
     ligand = pr.parsePDB(ligand_pdb)
@@ -210,11 +373,8 @@ def prepare_protein_pocket(protein_pdb, ligand_pdb, pocket_pdb, selected_pdb):
 
     selected = select_protein_heavy_atoms(selected_chains, protein_pdb)
     pr.writePDB(selected_pdb, selected)
-
-    with open(selected_pdb, "r") as fin:
-        selected_lines = fin.read().splitlines(True)
-    with open(selected_pdb, "w") as fout:
-        fout.writelines(selected_lines[1:])
+    rewrite_atom_records_only(selected_pdb)
+    normalize_pdb_for_apbs(selected_pdb)
 
     selected = pr.parsePDB(selected_pdb)
     complex_atoms = ligand + selected
