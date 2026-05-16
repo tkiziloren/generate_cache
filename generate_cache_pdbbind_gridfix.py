@@ -18,6 +18,8 @@ from scipy.spatial import cKDTree
 import openbabel.pybel as pybel
 from tfbio.data import Featurizer
 
+from feature_schema_metadata import apply_feature_schema_metadata
+
 
 BOX_SIZE_DEFAULT = 72
 APBS_GRID_POINTS = 161
@@ -686,6 +688,7 @@ def process_pdbbind_case(
             h5f.attrs["electrostatic_grid_shape"] = [box_size, box_size, box_size]
             h5f.attrs["electrostatic_grid_min"] = grid.origin.tolist()
             h5f.attrs["electrostatic_grid_max"] = grid.max_point.tolist()
+            apply_feature_schema_metadata(h5f)
 
         os.replace(tmp_h5, output_h5)
         print(f"[OK] {case_name} -> {output_h5}", flush=True)
@@ -731,14 +734,14 @@ def process_case(task):
             apbs_timeout=apbs_timeout,
             keep_temp=keep_temp,
         )
-        return True
+        return case_name, True
     except Exception as exc:
         print(f"[FAILED] {case_name}: {exc}", flush=True)
         with open(failed_cases_path, "a") as handle:
             handle.write(f"{case_name}\t{exc}\n")
         if os.path.exists(output_h5):
             os.remove(output_h5)
-        return False
+        return case_name, False
 
 
 def main():
@@ -788,16 +791,38 @@ def main():
             )
         )
 
+    total_tasks = len(tasks)
+    completed = 0
+    ok_count = 0
+    failed_count = 0
+    results = []
+
+    def record_progress(result):
+        nonlocal completed, ok_count, failed_count
+        case_name, ok = result
+        results.append(ok)
+        completed += 1
+        if ok:
+            ok_count += 1
+        else:
+            failed_count += 1
+        remaining = total_tasks - completed
+        print(
+            f"[PROGRESS] PDBBind cache {completed}/{total_tasks} completed | "
+            f"remaining={remaining} | ok={ok_count} | failed={failed_count} | latest={case_name}",
+            flush=True,
+        )
+
     if args.nproc == 1:
-        results = []
         for task in tasks:
-            results.append(process_case(task))
+            record_progress(process_case(task))
     else:
         with Pool(processes=args.nproc) as pool:
-            results = list(pool.imap_unordered(process_case, tasks))
+            for result in pool.imap_unordered(process_case, tasks):
+                record_progress(result)
 
-    failed_count = sum(1 for ok in results if not ok)
     print("ALL DONE.")
+    print(f"OK count: {ok_count}")
     print(f"Failed count: {failed_count}")
     print(f"Failed cases written to: {failed_cases_path}")
     if failed_count and args.fail_on_error:

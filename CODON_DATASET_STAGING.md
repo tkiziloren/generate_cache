@@ -272,7 +272,7 @@ tail -f /homes/tevfik/PHD/slurm_logs/work11-cache-nfs-<jobid>.out
 
 ```bash
 DATA_ROOT=/nfs/production/arl/chembl/tevfik/DEEP_APBS_DATASETS \
-GRID_SPECS="36:70 72:160 161:160" \
+GRID_SPECS="36:70 72:120 161:160" \
 LIMIT=all \
 NPROC=16 \
 sbatch scripts/run_work11_slurm_cache_matrix_nfs.sbatch
@@ -282,9 +282,9 @@ Outputs:
 
 ```text
 /nfs/production/arl/chembl/tevfik/DEEP_APBS_DATASETS/cache/work11_cache_gridfix_v1/scpdb/label_cavity6/box36_span70/
-/nfs/production/arl/chembl/tevfik/DEEP_APBS_DATASETS/cache/work11_cache_gridfix_v1/scpdb/label_cavity6/box72_span160/
+/nfs/production/arl/chembl/tevfik/DEEP_APBS_DATASETS/cache/work11_cache_gridfix_v1/scpdb/label_cavity6/box72_span120/
 /nfs/production/arl/chembl/tevfik/DEEP_APBS_DATASETS/cache/work11_cache_gridfix_v1/scpdb/label_cavity6/box161_span160/
 /nfs/production/arl/chembl/tevfik/DEEP_APBS_DATASETS/cache/work11_cache_gridfix_v1/pdbbind/refined-set/box36_span70/
-/nfs/production/arl/chembl/tevfik/DEEP_APBS_DATASETS/cache/work11_cache_gridfix_v1/pdbbind/refined-set/box72_span160/
+/nfs/production/arl/chembl/tevfik/DEEP_APBS_DATASETS/cache/work11_cache_gridfix_v1/pdbbind/refined-set/box72_span120/
 /nfs/production/arl/chembl/tevfik/DEEP_APBS_DATASETS/cache/work11_cache_gridfix_v1/pdbbind/refined-set/box161_span160/
 ```

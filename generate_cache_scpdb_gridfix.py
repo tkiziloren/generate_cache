@@ -12,6 +12,7 @@ import h5py
 import numpy as np
 import prody
 
+from feature_schema_metadata import apply_feature_schema_metadata
 from generate_cache_pdbbind_gridfix import (
     APBS_GRID_POINTS,
     APBS_SPAN_ANGSTROM,
@@ -429,6 +430,7 @@ def process_scpdb_case(
             h5f.attrs["electrostatic_grid_shape"] = [box_size, box_size, box_size]
             h5f.attrs["electrostatic_grid_min"] = grid.origin.tolist()
             h5f.attrs["electrostatic_grid_max"] = grid.max_point.tolist()
+            apply_feature_schema_metadata(h5f)
 
         os.replace(tmp_h5, output_h5)
 
@@ -599,22 +601,45 @@ def main():
         )
 
     rows = []
+    total_tasks = len(tasks)
+    completed = 0
+    ok_count = 0
+    skipped_count = 0
+    failed_count = 0
+
+    def record_progress(row):
+        nonlocal completed, ok_count, skipped_count, failed_count
+        append_manifest_row(manifest_path, row)
+        log_generation_row(logger, row)
+        rows.append(row)
+        completed += 1
+        if row["status"] == "ok":
+            ok_count += 1
+        elif row["status"] == "skipped":
+            skipped_count += 1
+        elif row["status"] == "failed":
+            failed_count += 1
+        remaining = total_tasks - completed
+        logger.info(
+            "[PROGRESS] scPDB cache %d/%d completed | remaining=%d | ok=%d | skipped=%d | failed=%d | latest=%s",
+            completed,
+            total_tasks,
+            remaining,
+            ok_count,
+            skipped_count,
+            failed_count,
+            row["case"],
+        )
+
     if args.nproc == 1:
         for task in tasks:
             row = process_case(task)
-            append_manifest_row(manifest_path, row)
-            log_generation_row(logger, row)
-            rows.append(row)
+            record_progress(row)
     else:
         with Pool(processes=args.nproc) as pool:
             for row in pool.imap_unordered(process_case, tasks):
-                append_manifest_row(manifest_path, row)
-                log_generation_row(logger, row)
-                rows.append(row)
+                record_progress(row)
 
-    failed_count = sum(1 for row in rows if row["status"] == "failed")
-    skipped_count = sum(1 for row in rows if row["status"] == "skipped")
-    ok_count = sum(1 for row in rows if row["status"] == "ok")
     logger.info("ALL DONE.")
     logger.info("OK: %d", ok_count)
     logger.info("Skipped: %d", skipped_count)

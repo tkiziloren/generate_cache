@@ -14,7 +14,7 @@ PYTHON_BIN="${PYTHON_BIN:-$REPO_DIR/.conda/bin/python}"
 PATH="$REPO_DIR/.conda/bin:$PATH"
 export PYTHONPATH="$REPO_DIR:${PYTHONPATH:-}"
 
-GRID_SPECS="${GRID_SPECS:-36:70 72:160 161:160}"
+GRID_SPECS="${GRID_SPECS:-36:70 72:120 161:160}"
 NPROC="${NPROC:-8}"
 LIMIT="${LIMIT:-all}"
 DATASETS="${DATASETS:-coach420_puresnet bu48_puresnet}"
@@ -70,6 +70,7 @@ for grid_spec in $GRID_SPECS; do
     --output-root "$OUTPUT_ROOT" \
     --datasets $DATASETS \
     --box-size "$box_size" \
+    --target-span "$target_span" \
     --resolution "$resolution" \
     "${limit_args[@]}" \
     --nproc "$NPROC" \

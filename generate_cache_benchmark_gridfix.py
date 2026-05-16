@@ -9,6 +9,7 @@ from pathlib import Path
 
 import h5py
 
+from feature_schema_metadata import apply_feature_schema_metadata
 from generate_cache_pdbbind_gridfix import (
     APBS_GRID_POINTS,
     APBS_SPAN_ANGSTROM,
@@ -31,7 +32,16 @@ from generate_cache_pdbbind_gridfix import (
 PREPARED_ROOT_DEFAULT = "/Users/tevfik/Sandbox/github/PHD/data/external_benchmarks/puresnet_prepared"
 OUTPUT_ROOT_DEFAULT = "/Users/tevfik/Sandbox/github/PHD/data/external_benchmarks/puresnet_cache_gridfix_v1"
 DATASETS = ("coach420_puresnet", "bu48_puresnet")
-MANIFEST_FIELDS = ["dataset", "case", "status", "output_h5", "box_size", "error"]
+MANIFEST_FIELDS = [
+    "dataset",
+    "case",
+    "status",
+    "output_h5",
+    "box_size",
+    "target_span",
+    "resolution",
+    "error",
+]
 
 
 def parse_args():
@@ -43,6 +53,12 @@ def parse_args():
     parser.add_argument("--cases", nargs="*", default=None)
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--box-size", type=int, default=36)
+    parser.add_argument(
+        "--target-span",
+        type=float,
+        default=None,
+        help="Physical point-grid span in Angstrom. Used to derive resolution when --resolution is omitted.",
+    )
     parser.add_argument("--resolution", type=float, default=None)
     parser.add_argument("--nproc", type=int, default=1)
     parser.add_argument("--apbs-bin", default="apbs")
@@ -73,6 +89,15 @@ def write_manifest_header(path):
         writer.writeheader()
 
 
+def span_label(target_span):
+    if target_span is None:
+        return None
+    value = float(target_span)
+    if value.is_integer():
+        return str(int(value))
+    return str(value).replace(".", "p")
+
+
 def append_manifest(path, row):
     with open(path, "a", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=MANIFEST_FIELDS)
@@ -91,6 +116,7 @@ def process_benchmark_case(
     output_dir,
     case_name,
     box_size,
+    target_span,
     resolution,
     apbs_bin,
     pdb2pqr_bin,
@@ -172,10 +198,13 @@ def process_benchmark_case(
             h5f.attrs["grid_origin"] = grid.origin.tolist()
             h5f.attrs["grid_max"] = grid.max_point.tolist()
             h5f.attrs["physical_span_angstrom"] = grid.span
+            if target_span is not None:
+                h5f.attrs["requested_target_span_angstrom"] = target_span
             h5f.attrs["apbs_grid_points"] = APBS_GRID_POINTS
             h5f.attrs["apbs_span_angstrom"] = APBS_SPAN_ANGSTROM
             h5f.attrs["features"] = ",".join([f"atomic_{name}" for name in featurizer.FEATURE_NAMES] + list(feature_arrays))
             h5f.attrs["labels"] = list(label_arrays)
+            apply_feature_schema_metadata(h5f)
 
         os.replace(tmp_h5, output_h5)
         print(f"[OK] {dataset}/{case_name} -> {output_h5}", flush=True)
@@ -195,11 +224,30 @@ def process_benchmark_case(
 def worker(task):
     fail_on_error, args = task[0], task[1:]
     dataset, output_h5, case_name = args[0], args[2], args[4]
+    box_size, target_span, resolution = args[5], args[6], args[7]
     try:
         process_benchmark_case(*args)
-        row = {"dataset": dataset, "case": case_name, "status": "ok", "output_h5": output_h5, "box_size": args[5], "error": ""}
+        row = {
+            "dataset": dataset,
+            "case": case_name,
+            "status": "ok",
+            "output_h5": output_h5,
+            "box_size": box_size,
+            "target_span": target_span if target_span is not None else "",
+            "resolution": resolution,
+            "error": "",
+        }
     except Exception as exc:
-        row = {"dataset": dataset, "case": case_name, "status": "failed", "output_h5": output_h5, "box_size": args[5], "error": repr(exc)}
+        row = {
+            "dataset": dataset,
+            "case": case_name,
+            "status": "failed",
+            "output_h5": output_h5,
+            "box_size": box_size,
+            "target_span": target_span if target_span is not None else "",
+            "resolution": resolution,
+            "error": repr(exc),
+        }
         print(f"[ERROR] {dataset}/{case_name}: {exc}", flush=True)
         if fail_on_error:
             raise
@@ -210,14 +258,22 @@ def main():
     args = parse_args()
     output_root = Path(args.output_root)
     output_root.mkdir(parents=True, exist_ok=True)
-    manifest_path = output_root / f"manifest_box{args.box_size}.csv"
+    if args.resolution is None:
+        if args.target_span is not None:
+            args.resolution = args.target_span / float(args.box_size - 1)
+        else:
+            args.resolution = APBS_SPAN_ANGSTROM / float(args.box_size - 1)
+    span = span_label(args.target_span)
+    output_box_dir_name = f"box{args.box_size}_span{span}" if span else f"box{args.box_size}"
+    manifest_name = f"manifest_box{args.box_size}_span{span}.csv" if span else f"manifest_box{args.box_size}.csv"
+    manifest_path = output_root / manifest_name
     write_manifest_header(manifest_path)
 
     tasks = []
     for dataset in args.datasets:
         dataset_root = Path(args.prepared_root) / dataset
         cases = read_cases(dataset_root, args.case_list, args.cases, args.limit)
-        output_dir = output_root / dataset / f"box{args.box_size}"
+        output_dir = output_root / dataset / output_box_dir_name
         for case_name in cases:
             case_dir = dataset_root / case_name
             output_h5 = output_dir / f"{case_name}.h5"
@@ -230,6 +286,7 @@ def main():
                     str(output_dir),
                     case_name,
                     args.box_size,
+                    args.target_span,
                     args.resolution,
                     args.apbs_bin,
                     args.pdb2pqr_bin,
@@ -244,15 +301,39 @@ def main():
     print(f"Tasks: {len(tasks)}")
     print(f"Manifest: {manifest_path}")
 
+    total_tasks = len(tasks)
+    completed = 0
+    ok_count = 0
+    failed_count = 0
+
+    def record_progress(row):
+        nonlocal completed, ok_count, failed_count
+        append_manifest(manifest_path, row)
+        completed += 1
+        if row["status"] == "ok":
+            ok_count += 1
+        elif row["status"] == "failed":
+            failed_count += 1
+        remaining = total_tasks - completed
+        print(
+            f"[PROGRESS] external benchmark cache "
+            f"{completed}/{total_tasks} completed | remaining={remaining} | "
+            f"ok={ok_count} | failed={failed_count} | latest={row['dataset']}/{row['case']}",
+            flush=True,
+        )
+
     if args.nproc == 1:
         for task in tasks:
-            append_manifest(manifest_path, worker(task))
+            record_progress(worker(task))
     else:
         with Pool(args.nproc) as pool:
             for row in pool.imap_unordered(worker, tasks):
-                append_manifest(manifest_path, row)
+                record_progress(row)
 
     print("ALL DONE.")
+    print(f"OK: {ok_count}")
+    print(f"Failed: {failed_count}")
+    print(f"Manifest: {manifest_path}")
 
 
 if __name__ == "__main__":

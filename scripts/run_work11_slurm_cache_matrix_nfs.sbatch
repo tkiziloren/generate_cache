@@ -41,7 +41,7 @@ if [[ -z "$GRID_SPECS" ]]; then
       GRID_SPECS+="${box_size}:${TARGET_SPAN} "
     done
   else
-    GRID_SPECS="36:70 72:160 161:160"
+    GRID_SPECS="36:70 72:120 161:160"
   fi
 fi
 

@@ -362,7 +362,7 @@ Codon komutu:
 ```bash
 cd /homes/tevfik/PHD/phd_examples/generate_cache
 
-GRID_SPECS="36:70 72:160 161:160" \
+GRID_SPECS="36:70 72:120 161:160" \
 LIMIT=all \
 NPROC=16 \
 OUTPUT_ROOT=/hps/nobackup/arl/chembl/tevfik/deep-apbs-data/work11_cache_gridfix_v1 \
@@ -373,11 +373,11 @@ Codon ciktilar:
 
 ```text
 /hps/nobackup/arl/chembl/tevfik/deep-apbs-data/work11_cache_gridfix_v1/scpdb/label_cavity6/box36_span70/
-/hps/nobackup/arl/chembl/tevfik/deep-apbs-data/work11_cache_gridfix_v1/scpdb/label_cavity6/box72_span160/
+/hps/nobackup/arl/chembl/tevfik/deep-apbs-data/work11_cache_gridfix_v1/scpdb/label_cavity6/box72_span120/
 /hps/nobackup/arl/chembl/tevfik/deep-apbs-data/work11_cache_gridfix_v1/scpdb/label_cavity6/box161_span160/
 
 /hps/nobackup/arl/chembl/tevfik/deep-apbs-data/work11_cache_gridfix_v1/pdbbind/refined-set/box36_span70/
-/hps/nobackup/arl/chembl/tevfik/deep-apbs-data/work11_cache_gridfix_v1/pdbbind/refined-set/box72_span160/
+/hps/nobackup/arl/chembl/tevfik/deep-apbs-data/work11_cache_gridfix_v1/pdbbind/refined-set/box72_span120/
 /hps/nobackup/arl/chembl/tevfik/deep-apbs-data/work11_cache_gridfix_v1/pdbbind/refined-set/box161_span160/
 ```
 
