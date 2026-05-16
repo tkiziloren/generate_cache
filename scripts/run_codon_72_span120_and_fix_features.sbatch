@@ -329,6 +329,7 @@ if [[ "$FIX_FEATURES" == "1" ]]; then
 
   if [[ "$FIX_EXISTING_SCPDB" == "1" ]]; then
     augment_dir "$WORK11_ROOT/scpdb/label_${SCPDB_LABEL_SOURCE}/box36_span70"
+    augment_dir "$WORK11_ROOT/scpdb/label_${SCPDB_LABEL_SOURCE}/box72_span70"
     augment_dir "$WORK11_ROOT/scpdb/label_${SCPDB_LABEL_SOURCE}/box72_span160"
     augment_dir "$WORK11_ROOT/scpdb/label_${SCPDB_LABEL_SOURCE}/box161_span160"
   fi
